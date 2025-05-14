@@ -5,7 +5,6 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -19,8 +18,11 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,8 +31,10 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import com.example.barcodescannerapp.ui.theme.BarcodeScannerAppTheme
-import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.Executors
@@ -39,7 +43,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         setContent {
             BarcodeScannerAppTheme {
                 MainScreen()
@@ -48,74 +51,88 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalPermissionsApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen() {
-    var navigateToCamera by remember { mutableStateOf(false) }
-    var navigateToGallery by remember { mutableStateOf(false) }
+    val navController = rememberNavController()
     var scannedValue by remember { mutableStateOf("") }
 
-    // BackHandler to navigate back to the main screen
-    BackPressedHandler(
-        onBackPressed = {
-            if (navigateToCamera || navigateToGallery) {
-                // Return to the main screen with buttons
-                navigateToCamera = false
-                navigateToGallery = false
-            }
-        }
-    )
+    // Using Scaffold for TopAppBar and body content
+    Scaffold(
+        topBar = {
+            TopAppBar(
 
-    if (!navigateToCamera && !navigateToGallery) {
-        // Main Screen with buttons
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Button(onClick = { navigateToCamera = true }) {
-                Text("Open Camera")
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(onClick = { navigateToGallery = true }) {
-                Text("Open Gallery")
-            }
-        }
-    } else if (navigateToCamera) {
-        CameraPreview { result ->
-            scannedValue = result
-        }
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center, ) {
-            Text(
-                text = if (scannedValue.isEmpty()) "Scan a barcode..." else "Scanned: $scannedValue",
-                modifier = Modifier.padding(16.dp),
-                style = MaterialTheme.typography.bodyLarge
+                title = { Text("Barcode Scanner") },  // App Bar Title
             )
         }
-    } else if (navigateToGallery) {
-        GalleryPreview { result ->
-            scannedValue = result
+    ) { paddingValues ->
+        NavHost(navController = navController, startDestination = Screen.Home.route, modifier = Modifier.padding(paddingValues)) {
+            composable(Screen.Home.route) {
+                HomeScreen(
+                    onCameraClick = { navController.navigate(Screen.Camera.route) },
+                    onGalleryClick = { navController.navigate(Screen.Gallery.route) }
+                )
+            }
+            composable(Screen.Camera.route) {
+                BackHandler { navController.popBackStack() }
+
+                CameraPreview { result ->
+                    scannedValue = result
+                }
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = if (scannedValue.isEmpty()) "Scan a barcode..." else "Scanned: $scannedValue",
+                        modifier = Modifier.padding(16.dp),
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+            composable(Screen.Gallery.route) {
+                BackHandler { navController.popBackStack() }
+
+                GalleryPreview { result ->
+                    scannedValue = result
+                }
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = if (scannedValue.isEmpty()) "Scan a barcode..." else "Scanned: $scannedValue",
+                        modifier = Modifier.padding(16.dp),
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
         }
-        Text(
-            text = if (scannedValue.isEmpty()) "Scan a barcode..." else "Scanned: $scannedValue",
-            modifier = Modifier.padding(16.dp),
-            style = MaterialTheme.typography.bodyLarge
-        )
+    }
+}
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HomeScreen(onCameraClick: () -> Unit, onGalleryClick: () -> Unit){
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Button(onClick = onCameraClick) {
+            Text(text = "Camera")
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(onClick = onGalleryClick) {
+            Text(text = "Gallery")
+        }
     }
 }
 
 @Composable
-fun BackPressedHandler(onBackPressed: () -> Unit) {
-    val backPressedDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
-    BackHandler(onBack = {
-        onBackPressed()
-        backPressedDispatcher?.onBackPressed()
-    })
-}
-
-@Composable
 fun CameraPreview(onBarcodeScanned: (String) -> Unit) {
-    val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
@@ -196,8 +213,6 @@ fun GalleryPreview(onBarcodeScanned: (String) -> Unit) {
     LaunchedEffect(Unit) {
         launcher.launch("image/*")
     }
-
-    // Optional UI while scanning or after image picked
 
 }
 
